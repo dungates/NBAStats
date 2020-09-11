@@ -1,0 +1,1 @@
+Data is retrieved from the nbastatR package by Alex Bresler. Documentation to use this package is found [here](https://www.rdocumentation.org/packages/nbastatR/versions/0.1.110202031), and the actual code to retrieve this data is found [here](https://github.com/jfabia/project09/blob/master/nba_data_scraper.R) for reference.
