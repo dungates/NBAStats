@@ -1,0 +1,407 @@
+---
+title: "AdvancedStats"
+author: "Duncan Gates"
+date: "9/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(nbastatR)
+library(teamcolors)
+library(nbastatR)
+library(gridExtra)
+library(plyr)
+library(dplyr)
+library(ggrepel)
+library(knitr)
+library(caTools)
+library(gghighlight)
+library(gt)
+```
+
+
+```{r cars}
+# Some 2020 player statistics
+bref_players_stats(seasons = 2020, tables = c("advanced", "totals"), widen = TRUE, assign_to_environment = TRUE)
+bref_advanced <- dataBREFPlayerAdvanced
+bref_totals <- dataBREFPlayerTotals
+```
+
+
+```{r}
+# Filter down to more than 500 total minutes and url shenanigans
+adv_player_stats <- bref_advanced %>%
+  filter(minutes >= 500) %>%
+  mutate(bref_url = glue::glue("https://www.basketball-reference.com/players/{stringr::str_sub(idPlayerNBA, 1, 1)}/{idPlayerNBA}.html"),
+         bref_link = glue::glue('<a href="{bref_url}">{namePlayer}</a>'))
+```
+
+```{r}
+# Collapse into frontcourt and backcourt
+unique_positions <- unique(bref_advanced$slugPosition)
+frontcourt <- c("PF", "SF", "C", "PF-SF", "C-PF", "SG-PF", "SF-PF")
+backcourt <- c("PG", "SG", "PG-SG", "SG-PG", "SF-SG", "SG-SF")
+
+bref_efg <- bref_totals %>%
+  select(one_of(c("idPlayerNBA", "pctEFG")))
+
+adv_player_stats <- adv_player_stats %>%
+  left_join(bref_efg, by = "idPlayerNBA") %>%
+  mutate( "position" = case_when(
+    slugPosition %in% frontcourt ~ "frontcourt",
+    slugPosition %in% backcourt ~ "backcourt",
+    TRUE ~ "other"),
+    "position" = as.factor(position)
+  )
+```
+
+
+```{r}
+# Uses NBA Stats API to get offensive and defensive rating
+nbastatR::teams_players_stats(seasons = 2020, types = c("player"), tables = "general", measures = "Advanced", assign_to_environment = TRUE)
+```
+
+```{r}
+player_rtgs <- dataGeneralPlayers %>%
+  select(one_of(c("idPlayer", "ortg", "drtg")))
+
+adv_player_stats <- adv_player_stats %>%
+  left_join(player_rtgs, by = c("idPlayerNBA" = "idPlayer"))
+```
+
+```{r}
+# Graph of PER for players with 500 plus minutes
+adv_player_stats %>%
+  ggplot(aes(x = ratioPER)) +
+  geom_histogram(alpha = 0.7, fill = "#011627") +
+  labs(title = "PER for players with 500+ minutes",
+       subtitle = "NBA 2019-2020 season",
+       caption = glue::glue("data via nbastatR")) + theme_bw()
+```
+
+```{r}
+# Graph of VORP
+adv_player_stats %>%
+  ggplot(aes(x = ratioVORP)) +
+  geom_histogram(alpha = 0.7, fill = "#011627") +
+  labs(title = "Value Over Replacement Player (VORP)",
+       subtitle = "NBA 2019-2020 season, players with 500+ minutes",
+       caption = glue::glue("data via nbastatR")) + theme_bw()
+```
+
+```{r}
+# Graph of win shares
+adv_player_stats %>%
+  ggplot(aes(x = ratioWS)) +
+  geom_histogram(alpha = 0.7, fill = "#011627") +
+  labs(title = "Win Shares for players with 500+ minutes",
+       subtitle = "NBA 2019-2020 season",
+       caption = glue::glue("data via nbastatR")) + theme_bw()
+```
+
+
+```{r}
+adv_player_stats %>%
+  ggplot(aes(x = ratioOBPM, y = ratioDBPM)) +
+  geom_point() +
+  geom_hline(yintercept = 0, alpha = 0.6, lty = "dashed") +
+  geom_vline(xintercept = 0, alpha = 0.6, lty = "dashed") +
+  labs(title = "Offensive vs. Defensive Box Plus-Minus",
+       subtitle = glue::glue("NBA 2019-2020 season"),
+       caption = glue::glue("data via nbastatR"),
+       x = "OBPM",
+       y = "DBPM") + theme_bw()
+```
+
+
+```{r}
+# Get top 10 players for some variable
+get_top10 <- function(df, column) {
+  require(rlang)
+  column <- enquo(column)
+  dplyr::top_n(df, n = 10, wt = !!column) %>%
+    pull(namePlayer)
+}
+# get top 10 for desired variable (in this case ratioBPM)
+top10_BPM <- top_n(adv_player_stats, n = 10, wt = ratioBPM) %>%
+  pull(namePlayer)
+
+# adv_player_stats %>%
+#   ggplot(aes(x = ratioOBPM, y = ratioDBPM)) +
+#   geom_point(color = "#011627") +
+#   gghighlight::gghighlight(namePlayer %in% top10_BPM, label_key = namePlayer,
+#                            label_params = list(fill = ggplot2::alpha("white", 0.8),
+#                                                box.padding = 0,
+#                                                family = "Roboto Condensed"),
+#                            unhighlighted_colour = "#007190") +
+#   geom_hline(yintercept = 0, alpha = 0.6, lty = "dashed") +
+#   geom_vline(xintercept = 0, alpha = 0.6, lty = "dashed") +
+#   labs(title = "Offensive vs. Defensive Box Plus-Minus: Top 10 Box Plus/Minus",
+#        subtitle = glue::glue("NBA 2019-2020 Season"),
+#        caption = glue::glue("data via nbastatR"),
+#        x = "OBPM",
+#        y = "DBPM")
+```
+
+```{r}
+adv_player_stats %>%
+  select(namePlayer, slugPosition, ratioBPM, ratioOBPM, ratioDBPM, bref_url, urlPlayerHeadshot) %>%
+  arrange(desc(ratioBPM)) %>%
+  top_n(n = 10, wt = ratioBPM) %>%
+  gt::gt(rowname_col = "namePlayer") %>%
+  tab_header(
+    title = md("**Top 10 Box Plus/Minus**")
+  ) %>%
+  cols_label(
+    slugPosition = md("**Position**"),
+    ratioBPM = md("**BPM**"),
+    ratioOBPM = md("**OBPM**"),
+    ratioDBPM = md("**DBPM**"),
+    bref_url = md("**Link**"),
+    urlPlayerHeadshot = md("")
+  ) %>%
+  text_transform(
+    locations = cells_data(vars(bref_url)),
+    fn = function(x) {
+      sprintf("<a href=%s>profile</a>", x)
+    }
+  ) %>%
+    text_transform(
+    locations = cells_data(vars(urlPlayerHeadshot)),
+    fn = function(x) {
+      web_image(url = x) 
+    }
+  ) %>%
+  tab_source_note(
+    md("source: [basketball-reference.com](https://www.basketball-reference.com) via [nbastatR](http://asbcllc.com/nbastatR/index.html)")
+  ) %>%
+  tab_footnote(
+    footnote = ("Players with 500+ minutes."),
+    locations = cells_title("title")
+    ) %>%
+  tab_footnote(
+    footnote = ("Box Plus/Minus: a box score estimate of the points per 100 possessions that a player contributed above a league-average player, translated to an average team."),
+    locations = cells_column_labels(
+      columns = vars(ratioBPM)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = ("Offensive Box Plus/Minus."),
+    locations = cells_column_labels(
+      columns = vars(ratioOBPM)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = ("Defensive Box Plus/Minus."),
+    locations = cells_column_labels(
+      columns = vars(ratioDBPM)
+    )
+  ) %>%
+  tab_options(table.width = px(640))
+```
+
+```{r}
+adv_player_stats %>%
+  select(urlPlayerHeadshot, namePlayer, slugPosition, ratioBPM, ratioOBPM, ratioDBPM) %>%
+  arrange(desc(ratioOBPM)) %>%
+  top_n(n = 10, wt = ratioOBPM) %>%
+  gt::gt() %>%
+  tab_header(
+    title = md("**Top 10 Offensive Box Plus/Minus**")
+  ) %>%
+  cols_label(
+    namePlayer = md("**Player**"),
+    urlPlayerHeadshot = md(""),
+    slugPosition = md("**Position**"),
+    ratioBPM = md("**BPM**"),
+    ratioOBPM = md("**OBPM**"),
+    ratioDBPM = md("**DBPM**")
+  ) %>%
+    text_transform(
+    locations = cells_data(vars(urlPlayerHeadshot)),
+    fn = function(x) {
+      web_image(url = x) 
+    }
+  ) %>%
+  tab_source_note(
+    md("source: [basketball-reference.com](https://www.basketball-reference.com) via [nbastatR](http://asbcllc.com/nbastatR/index.html)")
+  ) %>%
+  tab_footnote(
+    footnote = ("Players with 500+ minutes."),
+    locations = cells_title("title")
+  ) %>%
+  tab_footnote(
+    footnote = ("Box Plus/Minus; a box score estimate of the points per 100 possessions that a player contributed above a league-average player, translated to an average team."),
+    locations = cells_column_labels(
+      columns = vars(ratioBPM)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = ("Offensive Box Plus/Minus."),
+    locations = cells_column_labels(
+      columns = vars(ratioOBPM)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = ("Defensive Box Plus/Minus."),
+    locations = cells_column_labels(
+      columns = vars(ratioDBPM)
+    )
+  ) %>%
+  tab_options(table.width = px(640))
+```
+
+
+
+```{r}
+adv_player_stats %>%
+  select(urlPlayerHeadshot, namePlayer, slugPosition, ratioBPM, ratioOBPM, ratioDBPM) %>%
+  arrange(desc(ratioDBPM)) %>%
+  top_n(n = 10, wt = ratioDBPM) %>%
+  gt::gt() %>%
+  tab_header(
+    title = md("**Top 10 Defensive Box Plus/Minus**")
+  ) %>%
+  cols_label(
+    namePlayer = md("**Player**"),
+    urlPlayerHeadshot = md(""),
+    slugPosition = md("**Position**"),
+    ratioBPM = md("**BPM**"),
+    ratioOBPM = md("**OBPM**"),
+    ratioDBPM = md("**DBPM**")
+  ) %>%
+    text_transform(
+    locations = cells_data(vars(urlPlayerHeadshot)),
+    fn = function(x) {
+      web_image(url = x) 
+    }
+  ) %>%
+  tab_source_note(
+    md("source: [basketball-reference.com](https://www.basketball-reference.com) via [nbastatR](http://asbcllc.com/nbastatR/index.html)")
+  ) %>%
+  tab_footnote(
+    footnote = ("Players with 500+ minutes."),
+    locations = cells_title("title")
+  ) %>%
+  tab_footnote(
+    footnote = ("Box Plus/Minus; a box score estimate of the points per 100 possessions that a player contributed above a league-average player, translated to an average team."),
+    locations = cells_column_labels(
+      columns = vars(ratioBPM)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = ("Offensive Box Plus/Minus."),
+    locations = cells_column_labels(
+      columns = vars(ratioOBPM)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = ("Defensive Box Plus/Minus."),
+    locations = cells_column_labels(
+      columns = vars(ratioDBPM)
+    )
+  ) %>%
+  tab_options(table.width = px(640))
+```
+
+```{r}
+library(highcharter)
+#> Highcharts (www.highcharts.com) is a Highsoft software product which is
+#> not free for commercial and Governmental use
+hchart(adv_player_stats, "scatter", hcaes(x = "ratioOBPM", y = "ratioDBPM", group = "position", name = "namePlayer", OBPM = "ratioOBPM", DBPM = "ratioDBPM", position = "position")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />OBPM: {point.OBPM}<br />DBPM: {point.DBPM}") %>%
+  hc_title(text = "Offensive vs. Defensive Box Plus/Minus") %>%
+  hc_subtitle(text = "NBA 2019-2020 Season") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_538())
+```
+
+
+```{r}
+hchart(adv_player_stats, "scatter", hcaes(x = "ratioOWS", y = "ratioDWS", group = "position", name = "namePlayer", OWS = "ratioOWS", DWS = "ratioDWS", position = "position")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />OWS: {point.OWS}<br />DWS: {point.DWS}") %>%
+  hc_title(text = "Offensive vs. Defensive Win Shares") %>%
+  hc_subtitle(text = "NBA 2019-2020 Season") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "10px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_economist())
+```
+
+
+```{r}
+hchart(adv_player_stats, "scatter", 
+       hcaes(x = "pctTrueShooting", y = "ratioPER",
+             name = "namePlayer", TS = "pctTrueShooting", 
+             PER = "ratioPER", position = "position")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />TS%: {point.TS}<br />PER: {point.PER}<br />Position: {point.position}") %>%
+  hc_title(text = "True Shooting % vs Player Efficiency Rating") %>%
+  hc_subtitle(text = "NBA 2019-2020 Season") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "14px"
+               )
+             ) %>%
+  hc_add_theme(hc_theme_chalk(
+    plotOptions = list(
+      scatter = list(
+        marker = list(radius = 4,
+                      fillOpacity = 0.3) # actually this does nothing
+        )
+      )
+    )
+  )
+```
+
+
+```{r}
+hc <- hchart(adv_player_stats, "scatter", hcaes(x = "ratioOWS", y = "ratioDWS", group = "position", name = "namePlayer", OWS = "ratioOWS", DWS = "ratioDWS", Position = "position")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />OWS: {point.OWS}<br />DWS: {point.DWS}") %>%
+  hc_title(text = "Offensive vs. Defensive Win Shares") %>%
+  hc_subtitle(text = "NBA 2019-2020 Season") %>%
+  hc_credits(enabled = TRUE,
+             text = "via nbastatR",
+             href = "https://github.com/abresler/nbastatR",
+             style = list(
+               fontSize = "10px",
+               color = "#4a4a4a"
+               )
+             ) 
+hc2 <- hchart(adv_player_stats, "scatter", 
+       hcaes(x = "ortg", y = "drtg", group = "position",
+             name = "namePlayer", ortg = "ortg", 
+             drtg = "drtg", position = "position")) %>%
+  hc_tooltip(pointFormat = "<b>{point.name}</b><br />ORTG: {point.ortg}<br />DRTG: {point.drtg}<br />Position: {point.position}") %>%
+  hc_title(text = "Offensive vs. Defensive Rating") %>%
+  hc_subtitle(text = "NBA 2019-2020 Season") %>%
+  hc_credits(enabled = TRUE,
+             text = "data via nbastatR",
+             style = list(
+               fontSize = "14px"
+               )
+             )
+```
+
+
+```{r}
+hc
+```
+
+```{r}
+hc2
+```
+
+```{r}
+
+```
+
