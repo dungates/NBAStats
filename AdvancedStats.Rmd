@@ -127,21 +127,21 @@ get_top10 <- function(df, column) {
 top10_BPM <- top_n(adv_player_stats, n = 10, wt = ratioBPM) %>%
   pull(namePlayer)
 
-# adv_player_stats %>%
-#   ggplot(aes(x = ratioOBPM, y = ratioDBPM)) +
-#   geom_point(color = "#011627") +
-#   gghighlight::gghighlight(namePlayer %in% top10_BPM, label_key = namePlayer,
-#                            label_params = list(fill = ggplot2::alpha("white", 0.8),
-#                                                box.padding = 0,
-#                                                family = "Roboto Condensed"),
-#                            unhighlighted_colour = "#007190") +
-#   geom_hline(yintercept = 0, alpha = 0.6, lty = "dashed") +
-#   geom_vline(xintercept = 0, alpha = 0.6, lty = "dashed") +
-#   labs(title = "Offensive vs. Defensive Box Plus-Minus: Top 10 Box Plus/Minus",
-#        subtitle = glue::glue("NBA 2019-2020 Season"),
-#        caption = glue::glue("data via nbastatR"),
-#        x = "OBPM",
-#        y = "DBPM")
+adv_player_stats %>%
+  ggplot(aes(x = ratioOBPM, y = ratioDBPM)) +
+  geom_point(color = "#011627") +
+  gghighlight::gghighlight(namePlayer %in% top10_BPM, label_key = namePlayer,
+                           label_params = list(fill = ggplot2::alpha("white", 0.8),
+                                               box.padding = 0,
+                                               family = "Roboto Condensed"),
+                           unhighlighted_colour = "#007190") +
+  geom_hline(yintercept = 0, alpha = 0.6, lty = "dashed") +
+  geom_vline(xintercept = 0, alpha = 0.6, lty = "dashed") +
+  labs(title = "Offensive vs. Defensive Box Plus-Minus: Top 10 Box Plus/Minus",
+       subtitle = glue::glue("NBA 2019-2020 Season"),
+       caption = glue::glue("data via nbastatR"),
+       x = "OBPM",
+       y = "DBPM")
 ```
 
 ```{r}
@@ -402,6 +402,59 @@ hc2
 ```
 
 ```{r}
-
+adv_player_stats %>%
+  select(namePlayer, slugPosition, ratioBPM, ratioOBPM, ratioDBPM, bref_url, urlPlayerHeadshot) %>%
+  arrange(desc(ratioBPM)) %>%
+  top_n(n = 10, wt = ratioBPM) %>%
+  gt::gt(rowname_col = "namePlayer") %>%
+  tab_header(
+    title = md("**Top 10 Box Plus/Minus**")
+  ) %>%
+  cols_label(
+    slugPosition = md("**Position**"),
+    ratioBPM = md("**BPM**"),
+    ratioOBPM = md("**OBPM**"),
+    ratioDBPM = md("**DBPM**"),
+    bref_url = md("**Link**"),
+    urlPlayerHeadshot = md("")
+  ) %>%
+  text_transform(
+    locations = cells_data(vars(bref_url)),
+    fn = function(x) {
+      sprintf("<a href=%s>profile</a>", x)
+    }
+  ) %>%
+    text_transform(
+    locations = cells_data(vars(urlPlayerHeadshot)),
+    fn = function(x) {
+      web_image(url = x) 
+    }
+  ) %>%
+  tab_source_note(
+    md("source: [basketball-reference.com](https://www.basketball-reference.com) via [nbastatR](http://asbcllc.com/nbastatR/index.html)")
+  ) %>%
+  tab_footnote(
+    footnote = ("Players with 500+ minutes."),
+    locations = cells_title("title")
+    ) %>%
+  tab_footnote(
+    footnote = ("Box Plus/Minus: a box score estimate of the points per 100 possessions that a player contributed above a league-average player, translated to an average team."),
+    locations = cells_column_labels(
+      columns = vars(ratioBPM)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = ("Offensive Box Plus/Minus."),
+    locations = cells_column_labels(
+      columns = vars(ratioOBPM)
+    )
+  ) %>%
+  tab_footnote(
+    footnote = ("Defensive Box Plus/Minus."),
+    locations = cells_column_labels(
+      columns = vars(ratioDBPM)
+    )
+  ) %>%
+  tab_options(table.width = px(640))
 ```
 

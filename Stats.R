@@ -13,11 +13,46 @@ library(hexbin)
 library(magick)
 library(cowplot)
 library(wrapr)
+library(gt)
+library(ggimage)
 
 # Base stats import
 nbastatR::teams_players_stats(seasons = c(2010:2020), types = c("player"), tables = "general", measures = "Base", assign_to_environment = TRUE)
 nbaDecade <- dataGeneralPlayers
 
+#Last years stats import
+nbastatR::teams_players_stats(seasons = c(2020), types = c("player"), tables = "general", measures = "Base", assign_to_environment = TRUE)
+nba2020 <- dataGeneralPlayers
+
+# Playoff data
+nbastatR::teams_players_stats(seasons = c(2020), types = c("player"), tables = "general", measures = "Base", season_types = "Playoffs",
+                              assign_to_environment = TRUE)
+nbaPlayoffs <- dataGeneralPlayers
+
+playerData <- player_profiles(players = c(nbaPlayoffs$namePlayer[1:216]), player_ids = c(nbaPlayoffs$idPlayer[1:216])) #This takes a while
+
+# Getting 2020 player photos
+bref_players_stats(seasons = 2020, tables = c("advanced", "totals"), widen = TRUE, assign_to_environment = TRUE)
+bref_advanced <- dataBREFPlayerAdvanced
+adv_player_stats <- bref_advanced %>%
+  filter(minutes >= 500) %>%
+  mutate(bref_url = glue::glue("https://www.basketball-reference.com/players/{stringr::str_sub(idPlayer, 1, 1)}/{idPlayer}.html"),
+         bref_link = glue::glue('<a href="{bref_url}">{namePlayer}</a>'))
+playerPhotos <- adv_player_stats %>% select(namePlayer, idPlayerNBA, bref_url, urlPlayerHeadshot)
+
+#Joining player data and photos
+playerStatsPhotos <- playerData %>% left_join(playerPhotos, by = c("idPlayer"))
+
+# Plotting the players
+footinch_formatter <- function(x) {
+  foot <- floor(x/12)
+  inch <- x %% 12
+  return(paste(foot, "'", inch, "\"", sep=""))
+}
+playerData$feet <- footinch_formatter(playerData$heightInches)
+ggplot(data = playerData, aes(heightInches, weightLBS)) + geom_image(aes(image = urlPlayerHeadshot), size = 0.15) +
+  labs(y = "Weight (Pounds)", x = "Height (Feet)") + scale_x_continuous(labels = footinch_formatter) +
+  theme(plot.title = element_text(hjust = 0.5)) + theme_bw()
 
 # Function that writes shot data for each team with color and logo
 teamColors <- teamcolors %>% filter(league == "nba")
